@@ -75,6 +75,20 @@ func TestLoad_ReturnsErrorForMissingFile(t *testing.T) {
 	}
 }
 
+func TestLoad_TrimsValueWhitespace(t *testing.T) {
+	dir := t.TempDir()
+	f := filepath.Join(dir, ".env")
+	os.WriteFile(f, []byte("FOO=  bar  \n"), 0600)
+
+	vars, err := Load(f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if vars["FOO"] != "bar" {
+		t.Errorf("FOO: want bar, got %q", vars["FOO"])
+	}
+}
+
 func TestApply_SetsEnvVars(t *testing.T) {
 	vars := map[string]string{"TEST_APPLY_VAR": "testval"}
 	Apply(vars)
