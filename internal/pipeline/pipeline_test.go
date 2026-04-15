@@ -3,6 +3,7 @@ package pipeline
 import (
 	"fmt"
 	"testing"
+	"time"
 )
 
 type mockExecutor struct {
@@ -134,6 +135,82 @@ func TestGitLab_Watch_SuccessOnFirstPoll(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	assertCallContains(t, mock.calls, []string{"glab", "mr", "view", "5", "--output", "json"})
+}
+
+func TestGitLab_Watch_FailedCallsClaude(t *testing.T) {
+	mock := &mockExecutor{
+		responses: []executeResult{
+			{out: []byte(`{"head_pipeline":{"status":"failed"}}`), err: nil},
+			{out: []byte(`{"head_pipeline":{"status":"success"}}`), err: nil},
+		},
+	}
+	var claudePrompts []string
+	fakeCl := &fakeClaude{onResume: func(p string) { claudePrompts = append(claudePrompts, p) }}
+	m := NewGitLab(mock, noopPrompter)
+	m.sleep = func(time.Duration) {}
+	if err := m.Watch(5, fakeCl); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(claudePrompts) != 1 {
+		t.Errorf("expected 1 claude prompt, got %d", len(claudePrompts))
+	}
+}
+
+func TestGitLab_Watch_CanceledPromptsUser(t *testing.T) {
+	mock := &mockExecutor{
+		responses: []executeResult{
+			{out: []byte(`{"head_pipeline":{"status":"canceled"}}`), err: nil},
+			{out: []byte(`{"head_pipeline":{"status":"success"}}`), err: nil},
+		},
+	}
+	var prompted bool
+	prompter := func(q string) (string, error) {
+		prompted = true
+		return "y", nil
+	}
+	m := NewGitLab(mock, prompter)
+	m.sleep = func(time.Duration) {}
+	if err := m.Watch(5, nopClaude{}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !prompted {
+		t.Error("expected user prompt for canceled pipeline")
+	}
+}
+
+func TestGitLab_Watch_CanceledUserQuitReturns(t *testing.T) {
+	mock := &mockExecutor{
+		responses: []executeResult{
+			{out: []byte(`{"head_pipeline":{"status":"canceled"}}`), err: nil},
+		},
+	}
+	m := NewGitLab(mock, func(q string) (string, error) { return "n", nil })
+	m.sleep = func(time.Duration) {}
+	if err := m.Watch(5, nopClaude{}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestGitLab_Watch_SkippedPromptsUser(t *testing.T) {
+	mock := &mockExecutor{
+		responses: []executeResult{
+			{out: []byte(`{"head_pipeline":{"status":"skipped"}}`), err: nil},
+			{out: []byte(`{"head_pipeline":{"status":"success"}}`), err: nil},
+		},
+	}
+	var prompted bool
+	prompter := func(q string) (string, error) {
+		prompted = true
+		return "y", nil
+	}
+	m := NewGitLab(mock, prompter)
+	m.sleep = func(time.Duration) {}
+	if err := m.Watch(5, nopClaude{}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !prompted {
+		t.Error("expected user prompt for skipped pipeline")
+	}
 }
 
 func assertCallContains(t *testing.T, calls [][]string, target []string) {

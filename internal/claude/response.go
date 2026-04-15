@@ -62,7 +62,8 @@ func ParseRateLimitError(result string) (*RateLimitError, bool) {
 	if !strings.Contains(result, "You've hit your limit") {
 		return nil, false
 	}
-	idx := strings.Index(result, "resets ")
+	lower := strings.ToLower(result)
+	idx := strings.Index(lower, "resets ")
 	if idx == -1 {
 		return &RateLimitError{WaitDuration: time.Hour}, true
 	}

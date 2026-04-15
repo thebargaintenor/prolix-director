@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"time"
 )
 
 type Executor interface {
@@ -64,10 +65,11 @@ func (g *GitHub) Watch(prNum int, claude Claude) error {
 type GitLab struct {
 	executor Executor
 	prompter func(string) (string, error)
+	sleep    func(time.Duration)
 }
 
 func NewGitLab(executor Executor, prompter func(string) (string, error)) *GitLab {
-	return &GitLab{executor: executor, prompter: prompter}
+	return &GitLab{executor: executor, prompter: prompter, sleep: time.Sleep}
 }
 
 func (g *GitLab) Watch(mrNum int, claude Claude) error {
@@ -80,6 +82,7 @@ func (g *GitLab) Watch(mrNum int, claude Claude) error {
 		fmt.Printf("Waiting on pipeline...\n")
 		for status != "success" && status != "failed" && status != "canceled" && status != "skipped" {
 			fmt.Printf("\rCurrent status: %s", status)
+			g.sleep(time.Minute)
 			status, err = g.pipelineStatus(mrStr)
 			if err != nil {
 				return err

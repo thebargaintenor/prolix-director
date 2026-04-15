@@ -3,18 +3,13 @@ package claude
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"time"
+
+	"github.com/thebargaintenor/prolix-director/internal/runner"
 )
 
 type Executor interface {
 	Execute(name string, args ...string) ([]byte, error)
-}
-
-type osExecutor struct{}
-
-func (e *osExecutor) Execute(name string, args ...string) ([]byte, error) {
-	return exec.Command(name, args...).Output()
 }
 
 type Client struct {
@@ -34,7 +29,7 @@ func New(executor Executor, sessionID, model string) *Client {
 }
 
 func NewDefault(sessionID, model string) *Client {
-	return New(&osExecutor{}, sessionID, model)
+	return New(&runner.OS{}, sessionID, model)
 }
 
 func (c *Client) Run(prompt, schema string) (*Response, error) {

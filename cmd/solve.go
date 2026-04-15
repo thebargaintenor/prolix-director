@@ -2,10 +2,10 @@ package cmd
 
 import (
 	"bufio"
+	"crypto/rand"
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -13,6 +13,7 @@ import (
 	"github.com/thebargaintenor/prolix-director/internal/envfile"
 	"github.com/thebargaintenor/prolix-director/internal/git"
 	"github.com/thebargaintenor/prolix-director/internal/pipeline"
+	"github.com/thebargaintenor/prolix-director/internal/runner"
 	"github.com/thebargaintenor/prolix-director/internal/solve"
 )
 
@@ -69,22 +70,37 @@ func RunSolve(args []string) error {
 		reviewerModel = "claude-sonnet-4-6"
 	}
 
-	mainSessionID := newUUID()
-	reviewerSessionID := newUUID()
+	mainSessionID, err := newUUID()
+	if err != nil {
+		return fmt.Errorf("generate session id: %w", err)
+	}
+	reviewerSessionID, err := newUUID()
+	if err != nil {
+		return fmt.Errorf("generate session id: %w", err)
+	}
 	fmt.Printf("Main session ID: %s\n", mainSessionID)
 	fmt.Printf("Reviewer session ID: %s\n", reviewerSessionID)
 
-	executor := &osExecutor{}
-	projectName := filepath.Base(mustGetwd())
+	ex := &runner.OS{}
+	wd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("getwd: %w", err)
+	}
+	projectName := filepath.Base(wd)
 	basePath := filepath.Join(os.Getenv("HOME"), ".config", "ai-worktrees", projectName)
 	branch := fmt.Sprintf("agent-issue-%s", cfg.IssueNum)
 
-	wt := git.New(executor, basePath, branch, cfg.MainBranch)
+	wt := git.New(ex, basePath, branch, cfg.MainBranch)
 	fmt.Println("Creating worktree")
 	if err := wt.Create(); err != nil {
 		return fmt.Errorf("create worktree: %w", err)
 	}
+	if err := os.Chdir(wt.Path()); err != nil {
+		_ = wt.Remove()
+		return fmt.Errorf("chdir to worktree: %w", err)
+	}
 	defer func() {
+		os.Chdir(wd) //nolint: errcheck
 		if rmErr := wt.Remove(); rmErr != nil {
 			fmt.Fprintf(os.Stderr, "cleanup warning: %v\n", rmErr)
 		}
@@ -96,9 +112,9 @@ func RunSolve(args []string) error {
 
 	var monitor pipeline.Monitor
 	if cfg.GitProvider == "github" {
-		monitor = pipeline.NewGitHub(executor, 3, prompter)
+		monitor = pipeline.NewGitHub(ex, 3, prompter)
 	} else {
-		monitor = pipeline.NewGitLab(executor, prompter)
+		monitor = pipeline.NewGitLab(ex, prompter)
 	}
 
 	s := solve.New(
@@ -108,8 +124,8 @@ func RunSolve(args []string) error {
 			GitProvider:  cfg.GitProvider,
 			SkipPipeline: cfg.SkipPipeline,
 		},
-		&mainAdapter{mainClaude, prompter},
-		&reviewAdapter{reviewerClaude, prompter},
+		&mainAdapter{mainClaude},
+		&reviewAdapter{reviewerClaude},
 		monitor,
 		prompter,
 	)
@@ -117,15 +133,8 @@ func RunSolve(args []string) error {
 	return s.Run()
 }
 
-type osExecutor struct{}
-
-func (e *osExecutor) Execute(name string, args ...string) ([]byte, error) {
-	return exec.Command(name, args...).Output()
-}
-
 type mainAdapter struct {
-	client   *claude.Client
-	prompter func(string) (string, error)
+	client *claude.Client
 }
 
 func (a *mainAdapter) RunWithRetry(prompt, schema string, p func(string) (string, error)) (*solve.RunResult, error) {
@@ -145,8 +154,7 @@ func (a *mainAdapter) ResumeWithRetry(prompt, schema string, p func(string) (str
 }
 
 type reviewAdapter struct {
-	client   *claude.Client
-	prompter func(string) (string, error)
+	client *claude.Client
 }
 
 func (a *reviewAdapter) ResumeWithRetry(prompt, schema string, p func(string) (string, error)) (*solve.RunResult, error) {
@@ -181,18 +189,12 @@ func stdinPrompter() func(string) (string, error) {
 	}
 }
 
-func newUUID() string {
-	out, err := exec.Command("uuidgen").Output()
-	if err != nil {
-		return fmt.Sprintf("%d", os.Getpid())
+func newUUID() (string, error) {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", fmt.Errorf("generate uuid: %w", err)
 	}
-	return strings.TrimSpace(string(out))
-}
-
-func mustGetwd() string {
-	wd, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
-	return wd
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:]), nil
 }

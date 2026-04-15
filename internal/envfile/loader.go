@@ -25,6 +25,7 @@ func Load(path string) (map[string]string, error) {
 		if !ok {
 			continue
 		}
+		k = strings.TrimSpace(k)
 		v = strings.Trim(v, `"'`)
 		v = strings.TrimSpace(v)
 		vars[k] = v

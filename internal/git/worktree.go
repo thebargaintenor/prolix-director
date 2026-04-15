@@ -43,7 +43,7 @@ func (w *Worktree) Create() error {
 }
 
 func (w *Worktree) Remove() error {
-	w.executor.Execute("git", "push") // best-effort, mirrors `git push || true`
+	w.executor.Execute("git", "push", "origin", w.branch) //nolint: errcheck — best-effort
 	if _, err := w.executor.Execute("git", "worktree", "remove", w.Path()); err != nil {
 		return fmt.Errorf("worktree remove: %w", err)
 	}
