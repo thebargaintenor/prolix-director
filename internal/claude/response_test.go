@@ -131,3 +131,29 @@ func TestParseRateLimitError_FallbackOnUnparsableTime(t *testing.T) {
 		t.Errorf("expected 1h fallback, got %v", rl.WaitDuration)
 	}
 }
+
+func TestParseResponse_NullStructuredOutput(t *testing.T) {
+	data := []byte(`{"result":"ok","is_error":false,"structured_output":null}`)
+	resp, err := ParseResponse(data)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.HasStructuredOutput() {
+		t.Error("expected HasStructuredOutput=false for null")
+	}
+}
+
+func TestParseResponse_MalformedStructuredOutput(t *testing.T) {
+	data := []byte(`{"result":"ok","is_error":false,"structured_output":"not-an-object"}`)
+	resp, err := ParseResponse(data)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !resp.HasStructuredOutput() {
+		t.Fatal("expected HasStructuredOutput=true")
+	}
+	_, err = resp.ParseImplOutput()
+	if err == nil {
+		t.Error("expected error for malformed structured_output")
+	}
+}
