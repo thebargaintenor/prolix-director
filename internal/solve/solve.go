@@ -183,6 +183,6 @@ type pipelineClaudeAdapter struct {
 }
 
 func (a *pipelineClaudeAdapter) ResumeWithRetry(prompt, schema string, p func(string) (string, error)) error {
-	_, err := a.client.ResumeWithRetry(prompt, schema, a.prompter)
+	_, err := a.client.ResumeWithRetry(prompt, schema, p)
 	return err
 }
