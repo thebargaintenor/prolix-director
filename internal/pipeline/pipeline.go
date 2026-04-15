@@ -102,10 +102,6 @@ func (g *GitLab) Watch(mrNum int, claude Claude) error {
 				return nil
 			}
 		}
-		status, err = g.pipelineStatus(mrStr)
-		if err != nil {
-			return err
-		}
 	}
 }
 

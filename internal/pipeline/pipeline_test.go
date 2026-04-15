@@ -123,6 +123,19 @@ func (nopClaude) ResumeWithRetry(prompt, schema string, p func(string) (string, 
 	return nil
 }
 
+func TestGitLab_Watch_SuccessOnFirstPoll(t *testing.T) {
+	mock := &mockExecutor{
+		responses: []executeResult{
+			{out: []byte(`{"head_pipeline":{"status":"success"}}`), err: nil},
+		},
+	}
+	m := NewGitLab(mock, noopPrompter)
+	if err := m.Watch(5, nopClaude{}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertCallContains(t, mock.calls, []string{"glab", "mr", "view", "5", "--output", "json"})
+}
+
 func assertCallContains(t *testing.T, calls [][]string, target []string) {
 	t.Helper()
 	for _, call := range calls {
