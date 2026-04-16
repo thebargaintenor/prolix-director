@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/thebargaintenor/prolix-director/internal/claude"
+	"github.com/thebargaintenor/prolix-director/internal/config"
 	"github.com/thebargaintenor/prolix-director/internal/envfile"
 	"github.com/thebargaintenor/prolix-director/internal/git"
 	"github.com/thebargaintenor/prolix-director/internal/pipeline"
@@ -24,7 +25,7 @@ type solveConfig struct {
 	SkipPipeline bool
 }
 
-func parseFlags(args []string) (solveConfig, error) {
+func parseFlags(args []string, defaultConfig *config.Config) (solveConfig, error) {
 	fs := flag.NewFlagSet("solve", flag.ContinueOnError)
 	mainBranch := fs.String("main-branch", "trunk", "main branch name")
 	skipPipeline := fs.Bool("skip-pipeline", false, "skip pipeline monitoring")
@@ -33,12 +34,18 @@ func parseFlags(args []string) (solveConfig, error) {
 	if err := fs.Parse(args); err != nil {
 		return solveConfig{}, err
 	}
+
+	// Set default git provider from config ONLY if not provided in flags
+	if *gitProvider == "" && defaultConfig.GitProvider != "" {
+		*gitProvider = defaultConfig.GitProvider
+	}
 	if *gitProvider == "" {
 		return solveConfig{}, fmt.Errorf("--git-provider is required (github or gitlab)")
 	}
 	if *gitProvider != "github" && *gitProvider != "gitlab" {
 		return solveConfig{}, fmt.Errorf("unsupported git provider %q; use github or gitlab", *gitProvider)
 	}
+
 	if fs.NArg() != 1 {
 		return solveConfig{}, fmt.Errorf("usage: prolix solve [flags] ISSUE_NUM")
 	}
@@ -51,32 +58,25 @@ func parseFlags(args []string) (solveConfig, error) {
 }
 
 func RunSolve(args []string) error {
-	cfg, err := parseFlags(args)
-	if err != nil {
-		return err
-	}
-
 	envPath := filepath.Join(os.Getenv("HOME"), ".claude", ".env")
 	if vars, loadErr := envfile.Load(envPath); loadErr == nil {
 		envfile.Apply(vars)
 	}
 
-	codeModel := os.Getenv("CODE_GEN_MODEL")
-	if codeModel == "" {
-		codeModel = "claude-opus-4-6"
-	}
-	reviewerModel := os.Getenv("REVIEWER_MODEL")
-	if reviewerModel == "" {
-		reviewerModel = "claude-sonnet-4-6"
+	appConfig := config.Load()
+
+	parsedConfig, err := parseFlags(args, appConfig)
+	if err != nil {
+		return err
 	}
 
 	mainSessionID, err := newUUID()
 	if err != nil {
-		return fmt.Errorf("generate session id: %w", err)
+		return fmt.Errorf("Error generating main session id: %w", err)
 	}
 	reviewerSessionID, err := newUUID()
 	if err != nil {
-		return fmt.Errorf("generate session id: %w", err)
+		return fmt.Errorf("Error generating reviewer session id: %w", err)
 	}
 	fmt.Printf("Main session ID: %s\n", mainSessionID)
 	fmt.Printf("Reviewer session ID: %s\n", reviewerSessionID)
@@ -88,9 +88,9 @@ func RunSolve(args []string) error {
 	}
 	projectName := filepath.Base(wd)
 	basePath := filepath.Join(os.Getenv("HOME"), ".config", "ai-worktrees", projectName)
-	branch := fmt.Sprintf("agent-issue-%s", cfg.IssueNum)
+	branch := fmt.Sprintf("agent-issue-%s", parsedConfig.IssueNum)
 
-	wt := git.New(ex, basePath, branch, cfg.MainBranch)
+	wt := git.New(ex, basePath, branch, parsedConfig.MainBranch)
 	fmt.Println("Creating worktree")
 	if err := wt.Create(); err != nil {
 		return fmt.Errorf("create worktree: %w", err)
@@ -107,11 +107,11 @@ func RunSolve(args []string) error {
 	}()
 
 	prompter := stdinPrompter()
-	mainClaude := claude.NewDefault(mainSessionID, codeModel)
-	reviewerClaude := claude.NewDefault(reviewerSessionID, reviewerModel)
+	mainClaude := claude.NewDefault(mainSessionID, appConfig.CodeGenModel)
+	reviewerClaude := claude.NewDefault(reviewerSessionID, appConfig.ReviewerModel)
 
 	var monitor pipeline.Monitor
-	if cfg.GitProvider == "github" {
+	if parsedConfig.GitProvider == "github" {
 		monitor = pipeline.NewGitHub(ex, 3, prompter)
 	} else {
 		monitor = pipeline.NewGitLab(ex, prompter)
@@ -119,10 +119,10 @@ func RunSolve(args []string) error {
 
 	s := solve.New(
 		solve.Config{
-			IssueNum:     cfg.IssueNum,
-			MainBranch:   cfg.MainBranch,
-			GitProvider:  cfg.GitProvider,
-			SkipPipeline: cfg.SkipPipeline,
+			IssueNum:     parsedConfig.IssueNum,
+			MainBranch:   parsedConfig.MainBranch,
+			GitProvider:  parsedConfig.GitProvider,
+			SkipPipeline: parsedConfig.SkipPipeline,
 		},
 		&mainAdapter{mainClaude},
 		&reviewAdapter{reviewerClaude},
