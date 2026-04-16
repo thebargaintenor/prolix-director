@@ -29,13 +29,28 @@ func (m *mockExecutor) Execute(name string, args ...string) ([]byte, error) {
 	return nil, nil
 }
 
+type mockStreamingExecutor struct {
+	responses []error
+	calls     [][]string
+	callIdx   int
+}
+
+func (m *mockStreamingExecutor) ExecuteStreaming(name string, args ...string) error {
+	call := append([]string{name}, args...)
+	m.calls = append(m.calls, call)
+	i := m.callIdx
+	m.callIdx++
+	if i < len(m.responses) {
+		return m.responses[i]
+	}
+	return nil
+}
+
 func noopPrompter(q string) (string, error) { return "y", nil }
 
 func TestGitHub_Watch_SuccessOnFirstTry(t *testing.T) {
-	mock := &mockExecutor{
-		responses: []executeResult{
-			{out: nil, err: nil},
-		},
+	mock := &mockStreamingExecutor{
+		responses: []error{nil},
 	}
 	m := NewGitHub(mock, 3, noopPrompter)
 	if err := m.Watch(10, nopClaude{}); err != nil {
@@ -48,11 +63,11 @@ func TestGitHub_Watch_SuccessOnFirstTry(t *testing.T) {
 }
 
 func TestGitHub_Watch_RetriesOnFailure(t *testing.T) {
-	mock := &mockExecutor{
-		responses: []executeResult{
-			{err: fmt.Errorf("checks failed")},
-			{err: fmt.Errorf("checks failed")},
-			{out: nil, err: nil},
+	mock := &mockStreamingExecutor{
+		responses: []error{
+			fmt.Errorf("checks failed"),
+			fmt.Errorf("checks failed"),
+			nil,
 		},
 	}
 	var claudePrompts []string
@@ -67,12 +82,12 @@ func TestGitHub_Watch_RetriesOnFailure(t *testing.T) {
 }
 
 func TestGitHub_Watch_PromptsUserAtMaxAttempts(t *testing.T) {
-	mock := &mockExecutor{
-		responses: []executeResult{
-			{err: fmt.Errorf("fail")},
-			{err: fmt.Errorf("fail")},
-			{err: fmt.Errorf("fail")},
-			{out: nil, err: nil},
+	mock := &mockStreamingExecutor{
+		responses: []error{
+			fmt.Errorf("fail"),
+			fmt.Errorf("fail"),
+			fmt.Errorf("fail"),
+			nil,
 		},
 	}
 	var humanPrompted bool
@@ -90,11 +105,11 @@ func TestGitHub_Watch_PromptsUserAtMaxAttempts(t *testing.T) {
 }
 
 func TestGitHub_Watch_ExitsOnUserQuit(t *testing.T) {
-	mock := &mockExecutor{
-		responses: []executeResult{
-			{err: fmt.Errorf("fail")},
-			{err: fmt.Errorf("fail")},
-			{err: fmt.Errorf("fail")},
+	mock := &mockStreamingExecutor{
+		responses: []error{
+			fmt.Errorf("fail"),
+			fmt.Errorf("fail"),
+			fmt.Errorf("fail"),
 		},
 	}
 	prompter := func(q string) (string, error) { return "q", nil }

@@ -11,6 +11,10 @@ type Executor interface {
 	Execute(name string, args ...string) ([]byte, error)
 }
 
+type StreamingExecutor interface {
+	ExecuteStreaming(name string, args ...string) error
+}
+
 type Claude interface {
 	ResumeWithRetry(prompt, schema string, prompter func(string) (string, error)) error
 }
@@ -20,12 +24,12 @@ type Monitor interface {
 }
 
 type GitHub struct {
-	executor    Executor
+	executor    StreamingExecutor
 	maxAttempts int
 	prompter    func(string) (string, error)
 }
 
-func NewGitHub(executor Executor, maxAttempts int, prompter func(string) (string, error)) *GitHub {
+func NewGitHub(executor StreamingExecutor, maxAttempts int, prompter func(string) (string, error)) *GitHub {
 	return &GitHub{executor: executor, maxAttempts: maxAttempts, prompter: prompter}
 }
 
@@ -33,7 +37,7 @@ func (g *GitHub) Watch(prNum int, claude Claude) error {
 	prStr := strconv.Itoa(prNum)
 	attempt := 0
 	for {
-		_, err := g.executor.Execute("gh", "pr", "checks", prStr, "--watch")
+		err := g.executor.ExecuteStreaming("gh", "pr", "checks", prStr, "--watch")
 		if err == nil {
 			return nil
 		}
