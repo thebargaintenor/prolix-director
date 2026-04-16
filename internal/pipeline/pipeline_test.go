@@ -7,9 +7,12 @@ import (
 )
 
 type mockExecutor struct {
-	responses []executeResult
-	calls     [][]string
-	callIdx   int
+	responses        []executeResult
+	calls            [][]string
+	callIdx          int
+	visibleResponses []error
+	visibleCalls     [][]string
+	visibleCallIdx   int
 }
 
 type executeResult struct {
@@ -29,30 +32,52 @@ func (m *mockExecutor) Execute(name string, args ...string) ([]byte, error) {
 	return nil, nil
 }
 
+func (m *mockExecutor) ExecuteVisible(name string, args ...string) error {
+	call := append([]string{name}, args...)
+	m.visibleCalls = append(m.visibleCalls, call)
+	i := m.visibleCallIdx
+	m.visibleCallIdx++
+	if i < len(m.visibleResponses) {
+		return m.visibleResponses[i]
+	}
+	return nil
+}
+
 func noopPrompter(q string) (string, error) { return "y", nil }
 
 func TestGitHub_Watch_SuccessOnFirstTry(t *testing.T) {
 	mock := &mockExecutor{
-		responses: []executeResult{
-			{out: nil, err: nil},
-		},
+		visibleResponses: []error{nil},
 	}
 	m := NewGitHub(mock, 3, noopPrompter)
 	if err := m.Watch(10, nopClaude{}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(mock.calls) != 1 {
-		t.Errorf("expected 1 call, got %d", len(mock.calls))
+	if len(mock.visibleCalls) != 1 {
+		t.Errorf("expected 1 visible call, got %d", len(mock.visibleCalls))
 	}
-	assertCallContains(t, mock.calls, []string{"gh", "pr", "checks", "10", "--watch"})
+	assertCallContains(t, mock.visibleCalls, []string{"gh", "pr", "checks", "10", "--watch"})
+}
+
+func TestGitHub_Watch_UsesExecuteVisible(t *testing.T) {
+	mock := &mockExecutor{
+		visibleResponses: []error{nil},
+	}
+	m := NewGitHub(mock, 3, noopPrompter)
+	if err := m.Watch(10, nopClaude{}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(mock.calls) != 0 {
+		t.Error("GitHub Watch must not call Execute; it must call ExecuteVisible")
+	}
 }
 
 func TestGitHub_Watch_RetriesOnFailure(t *testing.T) {
 	mock := &mockExecutor{
-		responses: []executeResult{
-			{err: fmt.Errorf("checks failed")},
-			{err: fmt.Errorf("checks failed")},
-			{out: nil, err: nil},
+		visibleResponses: []error{
+			fmt.Errorf("checks failed"),
+			fmt.Errorf("checks failed"),
+			nil,
 		},
 	}
 	var claudePrompts []string
@@ -68,11 +93,11 @@ func TestGitHub_Watch_RetriesOnFailure(t *testing.T) {
 
 func TestGitHub_Watch_PromptsUserAtMaxAttempts(t *testing.T) {
 	mock := &mockExecutor{
-		responses: []executeResult{
-			{err: fmt.Errorf("fail")},
-			{err: fmt.Errorf("fail")},
-			{err: fmt.Errorf("fail")},
-			{out: nil, err: nil},
+		visibleResponses: []error{
+			fmt.Errorf("fail"),
+			fmt.Errorf("fail"),
+			fmt.Errorf("fail"),
+			nil,
 		},
 	}
 	var humanPrompted bool
@@ -91,10 +116,10 @@ func TestGitHub_Watch_PromptsUserAtMaxAttempts(t *testing.T) {
 
 func TestGitHub_Watch_ExitsOnUserQuit(t *testing.T) {
 	mock := &mockExecutor{
-		responses: []executeResult{
-			{err: fmt.Errorf("fail")},
-			{err: fmt.Errorf("fail")},
-			{err: fmt.Errorf("fail")},
+		visibleResponses: []error{
+			fmt.Errorf("fail"),
+			fmt.Errorf("fail"),
+			fmt.Errorf("fail"),
 		},
 	}
 	prompter := func(q string) (string, error) { return "q", nil }

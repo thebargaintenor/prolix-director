@@ -9,6 +9,7 @@ import (
 
 type Executor interface {
 	Execute(name string, args ...string) ([]byte, error)
+	ExecuteVisible(name string, args ...string) error
 }
 
 type Claude interface {
@@ -33,7 +34,7 @@ func (g *GitHub) Watch(prNum int, claude Claude) error {
 	prStr := strconv.Itoa(prNum)
 	attempt := 0
 	for {
-		_, err := g.executor.Execute("gh", "pr", "checks", prStr, "--watch")
+		err := g.executor.ExecuteVisible("gh", "pr", "checks", prStr, "--watch")
 		if err == nil {
 			return nil
 		}
