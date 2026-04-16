@@ -7,12 +7,9 @@ import (
 )
 
 type mockExecutor struct {
-	responses        []executeResult
-	calls            [][]string
-	callIdx          int
-	visibleResponses []error
-	visibleCalls     [][]string
-	visibleCallIdx   int
+	responses []executeResult
+	calls     [][]string
+	callIdx   int
 }
 
 type executeResult struct {
@@ -32,13 +29,19 @@ func (m *mockExecutor) Execute(name string, args ...string) ([]byte, error) {
 	return nil, nil
 }
 
-func (m *mockExecutor) ExecuteVisible(name string, args ...string) error {
+type mockStreamingExecutor struct {
+	responses []error
+	calls     [][]string
+	callIdx   int
+}
+
+func (m *mockStreamingExecutor) ExecuteStreaming(name string, args ...string) error {
 	call := append([]string{name}, args...)
-	m.visibleCalls = append(m.visibleCalls, call)
-	i := m.visibleCallIdx
-	m.visibleCallIdx++
-	if i < len(m.visibleResponses) {
-		return m.visibleResponses[i]
+	m.calls = append(m.calls, call)
+	i := m.callIdx
+	m.callIdx++
+	if i < len(m.responses) {
+		return m.responses[i]
 	}
 	return nil
 }
@@ -46,35 +49,22 @@ func (m *mockExecutor) ExecuteVisible(name string, args ...string) error {
 func noopPrompter(q string) (string, error) { return "y", nil }
 
 func TestGitHub_Watch_SuccessOnFirstTry(t *testing.T) {
-	mock := &mockExecutor{
-		visibleResponses: []error{nil},
+	mock := &mockStreamingExecutor{
+		responses: []error{nil},
 	}
 	m := NewGitHub(mock, 3, noopPrompter)
 	if err := m.Watch(10, nopClaude{}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(mock.visibleCalls) != 1 {
-		t.Errorf("expected 1 visible call, got %d", len(mock.visibleCalls))
+	if len(mock.calls) != 1 {
+		t.Errorf("expected 1 call, got %d", len(mock.calls))
 	}
-	assertCallContains(t, mock.visibleCalls, []string{"gh", "pr", "checks", "10", "--watch"})
-}
-
-func TestGitHub_Watch_UsesExecuteVisible(t *testing.T) {
-	mock := &mockExecutor{
-		visibleResponses: []error{nil},
-	}
-	m := NewGitHub(mock, 3, noopPrompter)
-	if err := m.Watch(10, nopClaude{}); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(mock.calls) != 0 {
-		t.Error("GitHub Watch must not call Execute; it must call ExecuteVisible")
-	}
+	assertCallContains(t, mock.calls, []string{"gh", "pr", "checks", "10", "--watch"})
 }
 
 func TestGitHub_Watch_RetriesOnFailure(t *testing.T) {
-	mock := &mockExecutor{
-		visibleResponses: []error{
+	mock := &mockStreamingExecutor{
+		responses: []error{
 			fmt.Errorf("checks failed"),
 			fmt.Errorf("checks failed"),
 			nil,
@@ -92,8 +82,8 @@ func TestGitHub_Watch_RetriesOnFailure(t *testing.T) {
 }
 
 func TestGitHub_Watch_PromptsUserAtMaxAttempts(t *testing.T) {
-	mock := &mockExecutor{
-		visibleResponses: []error{
+	mock := &mockStreamingExecutor{
+		responses: []error{
 			fmt.Errorf("fail"),
 			fmt.Errorf("fail"),
 			fmt.Errorf("fail"),
@@ -115,8 +105,8 @@ func TestGitHub_Watch_PromptsUserAtMaxAttempts(t *testing.T) {
 }
 
 func TestGitHub_Watch_ExitsOnUserQuit(t *testing.T) {
-	mock := &mockExecutor{
-		visibleResponses: []error{
+	mock := &mockStreamingExecutor{
+		responses: []error{
 			fmt.Errorf("fail"),
 			fmt.Errorf("fail"),
 			fmt.Errorf("fail"),
