@@ -2,6 +2,23 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## GitHub behavior
+
+### Commit Message Style
+
+Make sure to include the _why_ in your commit message. Don't just describe the changes -- explain why
+the changes make sense and the outcomes that they produce.
+
+### Comments
+
+We need to distinguish AI comments on PRs from human comments, so, whenever you comment _anything_ on an issue or a PR -- begin it with a very obvious header. For example:
+
+```
+-- 🤖 AI Comment 🤖 --
+```
+
+Or something like that.
+
 ## Engineering Policies
 
 These are _strict_ policies that must be followed by all engineers and developers in this project. PRs will be rejected if these policies are violated.

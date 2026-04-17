@@ -80,6 +80,7 @@ func (s *Solver) Run() error {
 	schema := s.buildSchema(mrOrPR)
 
 	fmt.Println("===== Phase 1: Implementation =====")
+	fmt.Println("Working on issue...")
 	result, err := s.main.RunWithRetry(s.implementationPrompt(mrOrPR), schema, s.prompter)
 	if err != nil {
 		return err
@@ -109,12 +110,14 @@ func (s *Solver) aiReviewPhase(prNum int, mrOrPR string) error {
 	}
 
 	fmt.Println("===== Phase 3: AI Code Review =====")
+	fmt.Println("Reviewing...")
 	reviewPrompt := fmt.Sprintf("/code-review %s %d Leave your review as a comment on the %s", mrOrPR, prNum, mrOrPR)
 	if _, err := s.reviewer.ResumeWithRetry(reviewPrompt, "", s.prompter); err != nil {
 		return err
 	}
 
 	fmt.Println("===== Phase 4: Address CR comments =====")
+	fmt.Printf("Addressing review comments on %s %d...\n", mrOrPR, prNum)
 	addressPrompt := fmt.Sprintf("Read the review comments on %s %d and make changes accordingly", mrOrPR, prNum)
 	if _, err := s.main.ResumeWithRetry(addressPrompt, "", s.prompter); err != nil {
 		return err
@@ -178,6 +181,7 @@ func (s *Solver) humanReviewLoop(prNum int, mrOrPR string) error {
 		case "1":
 			return nil
 		case "2":
+			fmt.Printf("Addressing additional comments on %s %d...\n", mrOrPR, prNum)
 			prompt := fmt.Sprintf("Read the review latest comments on %s %d and make changes accordingly", mrOrPR, prNum)
 			if _, err := s.main.ResumeWithRetry(prompt, "", s.prompter); err != nil {
 				return err
@@ -186,6 +190,7 @@ func (s *Solver) humanReviewLoop(prNum int, mrOrPR string) error {
 				return err
 			}
 		case "3":
+			fmt.Println("Summarizing work into issue comment...")
 			prompt := fmt.Sprintf("The user has decided to close the %s. Leave a summary of this session as a comment on issue %s", mrOrPR, s.config.IssueNum)
 			if _, err := s.main.ResumeWithRetry(prompt, "", s.prompter); err != nil {
 				return err
