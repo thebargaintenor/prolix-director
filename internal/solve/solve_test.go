@@ -193,6 +193,66 @@ func TestSolver_SkipsPipelineWhenConfigured(t *testing.T) {
 	}
 }
 
+func TestSolver_Resume_WithPRNum_SkipsToPhase6(t *testing.T) {
+	prompter := func(q string) (string, error) { return "1", nil } // Phase 6: cleanup
+	mainClaude := &fakeMainClient{}
+	s := New(
+		Config{IssueNum: "5", GitProvider: "github", SkipPipeline: true},
+		mainClaude, &fakeReviewer{}, &fakePipeline{}, prompter,
+	)
+
+	if err := s.Resume(42); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(mainClaude.runPrompts) != 0 {
+		t.Errorf("expected no RunWithRetry calls when starting at Phase 6, got %v", mainClaude.runPrompts)
+	}
+}
+
+func TestSolver_Resume_WithoutPRNum_RunsFromPhase1(t *testing.T) {
+	prompter := func(q string) (string, error) { return "1", nil }
+	mainClaude := &fakeMainClient{
+		runResponses:    []*RunResult{{PRNum: 42}},
+		resumeResponses: []*RunResult{{}},
+	}
+	s := New(
+		Config{IssueNum: "5", GitProvider: "github", SkipPipeline: true},
+		mainClaude, &fakeReviewer{}, &fakePipeline{}, prompter,
+	)
+
+	if err := s.Resume(0); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(mainClaude.runPrompts) == 0 {
+		t.Error("expected Phase 1 RunWithRetry call when no PR provided")
+	}
+}
+
+func TestSolver_Resume_WithPRNum_CallsHumanReviewLoop(t *testing.T) {
+	callCount := 0
+	prompter := func(q string) (string, error) {
+		callCount++
+		if callCount == 1 {
+			return "2", nil // address comments
+		}
+		return "1", nil // cleanup
+	}
+	mainClaude := &fakeMainClient{
+		resumeResponses: []*RunResult{{}, {}},
+	}
+	s := New(
+		Config{IssueNum: "5", GitProvider: "github", SkipPipeline: true},
+		mainClaude, &fakeReviewer{}, &fakePipeline{}, prompter,
+	)
+
+	if err := s.Resume(42); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(mainClaude.resumePrompts) == 0 {
+		t.Error("expected resume calls from human review loop")
+	}
+}
+
 func TestSolver_GitLabUsesMRLabel(t *testing.T) {
 	prompter := func(q string) (string, error) { return "1", nil }
 	mainClaude := &fakeMainClient{

@@ -42,6 +42,13 @@ func (w *Worktree) Create() error {
 	return nil
 }
 
+func (w *Worktree) Attach() error {
+	if _, err := w.executor.Execute("git", "worktree", "add", w.Path(), w.branch); err != nil {
+		return fmt.Errorf("worktree add: %w", err)
+	}
+	return nil
+}
+
 func (w *Worktree) Remove() error {
 	w.executor.Execute("git", "push", "origin", w.branch) //nolint: errcheck — best-effort
 	if _, err := w.executor.Execute("git", "worktree", "remove", w.Path()); err != nil {

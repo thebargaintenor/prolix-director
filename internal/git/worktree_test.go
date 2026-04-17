@@ -71,6 +71,32 @@ func TestWorktree_Remove_ContinuesIfPushFails(t *testing.T) {
 	}
 }
 
+func TestWorktree_Attach_AddsExistingBranchAsWorktree(t *testing.T) {
+	mock := &mockExecutor{}
+	wt := New(mock, "/base/worktrees/repo", "agent-issue-5", "trunk")
+
+	if err := wt.Attach(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	assertCallContains(t, mock.calls, []string{"git", "worktree", "add", "/base/worktrees/repo/agent-issue-5", "agent-issue-5"})
+}
+
+func TestWorktree_Attach_DoesNotCheckoutMainBranch(t *testing.T) {
+	mock := &mockExecutor{}
+	wt := New(mock, "/base/worktrees/repo", "agent-issue-5", "trunk")
+
+	if err := wt.Attach(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, call := range mock.calls {
+		if len(call) >= 3 && call[0] == "git" && call[1] == "checkout" && call[2] == "trunk" {
+			t.Error("Attach should not checkout main branch")
+		}
+	}
+}
+
 // helpers
 
 func assertCallContains(t *testing.T, calls [][]string, target []string) {

@@ -9,12 +9,17 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "Usage: prolix <command> [args]\nCommands: solve")
+		fmt.Fprintln(os.Stderr, "Usage: prolix <command> [args]\nCommands: solve, resume")
 		os.Exit(1)
 	}
 	switch os.Args[1] {
 	case "solve":
 		if err := cmd.RunSolve(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	case "resume":
+		if err := cmd.RunResume(os.Args[2:]); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
