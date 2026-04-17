@@ -83,7 +83,9 @@ func RunResume(args []string) error {
 		return fmt.Errorf("chdir to worktree: %w", err)
 	}
 	defer func() {
-		os.Chdir(wd) //nolint: errcheck
+		if err := os.Chdir(wd); err != nil {
+			fmt.Fprintf(os.Stderr, "cleanup warning: chdir: %v\n", err)
+		}
 		if err := wt.Detach(); err != nil {
 			fmt.Fprintf(os.Stderr, "cleanup warning: %v\n", err)
 		}

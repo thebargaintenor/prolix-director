@@ -2,12 +2,12 @@ package cmd
 
 import (
 	"bufio"
-	"crypto/rand"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/thebargaintenor/prolix-director/internal/claude"
 	"github.com/thebargaintenor/prolix-director/internal/config"
 	"github.com/thebargaintenor/prolix-director/internal/envfile"
@@ -40,14 +40,8 @@ func newWorktree(ex git.Executor, basePath, branch, mainBranch string) *git.Work
 }
 
 func newSolver(appConfig *config.Config, ex *runner.OS, cfg solve.Config) (*solve.Solver, error) {
-	mainSessionID, err := newUUID()
-	if err != nil {
-		return nil, fmt.Errorf("Error generating main session id: %w", err)
-	}
-	reviewerSessionID, err := newUUID()
-	if err != nil {
-		return nil, fmt.Errorf("Error generating reviewer session id: %w", err)
-	}
+	mainSessionID := uuid.New().String()
+	reviewerSessionID := uuid.New().String()
 	fmt.Printf("Main session ID: %s\n", mainSessionID)
 	fmt.Printf("Reviewer session ID: %s\n", reviewerSessionID)
 
@@ -121,12 +115,3 @@ func stdinPrompter() func(string) (string, error) {
 	}
 }
 
-func newUUID() (string, error) {
-	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return "", fmt.Errorf("generate uuid: %w", err)
-	}
-	b[6] = (b[6] & 0x0f) | 0x40
-	b[8] = (b[8] & 0x3f) | 0x80
-	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:]), nil
-}
