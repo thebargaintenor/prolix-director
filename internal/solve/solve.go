@@ -57,21 +57,30 @@ func New(cfg Config, main MainClient, reviewer ReviewClient, pm pipelineMonitor,
 	}
 }
 
-func (s *Solver) Run() error {
-	mrOrPR := "PR"
+func (s *Solver) mrOrPRLabel() string {
 	if s.config.GitProvider == "gitlab" {
-		mrOrPR = "MR"
+		return "MR"
 	}
+	return "PR"
+}
 
-	schema := fmt.Sprintf(`{"type":"object","properties":{"%s_number":{"type":"integer"},"clarifying_question":{"type":"string"}}}`, mrOrPR)
+func (s *Solver) buildSchema(mrOrPR string) string {
+	return fmt.Sprintf(`{"type":"object","properties":{"%s_number":{"type":"integer"},"clarifying_question":{"type":"string"}}}`, mrOrPR)
+}
 
-	fmt.Println("===== Phase 1: Implementation =====")
-	prompt := fmt.Sprintf(
+func (s *Solver) implementationPrompt(mrOrPR string) string {
+	return fmt.Sprintf(
 		"/test-driven-development Work on %s issue %s. If you don't have enough context to create a %s, output a clarifying question via the `clarifying question` JSON key. Otherwise, create a %s and output the number via the `%s number` JSON key",
 		s.config.GitProvider, s.config.IssueNum, mrOrPR, mrOrPR, mrOrPR,
 	)
+}
 
-	result, err := s.main.RunWithRetry(prompt, schema, s.prompter)
+func (s *Solver) Run() error {
+	mrOrPR := s.mrOrPRLabel()
+	schema := s.buildSchema(mrOrPR)
+
+	fmt.Println("===== Phase 1: Implementation =====")
+	result, err := s.main.RunWithRetry(s.implementationPrompt(mrOrPR), schema, s.prompter)
 	if err != nil {
 		return err
 	}
@@ -81,8 +90,19 @@ func (s *Solver) Run() error {
 		return err
 	}
 
-	prNum := result.numberForProvider(s.config.GitProvider)
+	return s.aiReviewPhase(result.numberForProvider(s.config.GitProvider), mrOrPR)
+}
 
+func (s *Solver) Resume(prNum int) error {
+	if prNum == 0 {
+		return s.Run()
+	}
+	mrOrPR := s.mrOrPRLabel()
+	fmt.Println("===== Phase 6: Human Review Loop =====")
+	return s.humanReviewLoop(prNum, mrOrPR)
+}
+
+func (s *Solver) aiReviewPhase(prNum int, mrOrPR string) error {
 	fmt.Println("===== Phase 2: Pipeline loop 1 =====")
 	if err := s.runPipeline(prNum); err != nil {
 		return err

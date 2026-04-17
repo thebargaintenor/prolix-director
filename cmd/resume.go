@@ -10,48 +10,59 @@ import (
 	"github.com/thebargaintenor/prolix-director/internal/solve"
 )
 
-type solveConfig struct {
+type resumeConfig struct {
 	IssueNum     string
+	Branch       string
+	PRNum        int
 	MainBranch   string
 	GitProvider  string
 	SkipPipeline bool
 }
 
-func parseFlags(args []string, defaultConfig *config.Config) (solveConfig, error) {
-	fs := flag.NewFlagSet("solve", flag.ContinueOnError)
+func parseResumeFlags(args []string, defaultConfig *config.Config) (resumeConfig, error) {
+	fs := flag.NewFlagSet("resume", flag.ContinueOnError)
+	branch := fs.String("branch", "", "existing branch to attach to")
+	prNum := fs.Int("pr", 0, "existing PR number (optional)")
 	mainBranch := fs.String("main-branch", "trunk", "main branch name")
 	skipPipeline := fs.Bool("skip-pipeline", false, "skip pipeline monitoring")
 	gitProvider := fs.String("git-provider", "", "git provider: github or gitlab")
 
 	if err := fs.Parse(args); err != nil {
-		return solveConfig{}, err
+		return resumeConfig{}, err
+	}
+
+	if *branch == "" {
+		return resumeConfig{}, fmt.Errorf("--branch is required")
 	}
 
 	if *gitProvider == "" && defaultConfig.GitProvider != "" {
 		*gitProvider = defaultConfig.GitProvider
 	}
 	if *gitProvider == "" {
-		return solveConfig{}, fmt.Errorf("--git-provider is required (github or gitlab)")
+		return resumeConfig{}, fmt.Errorf("--git-provider is required (github or gitlab)")
 	}
 	if *gitProvider != "github" && *gitProvider != "gitlab" {
-		return solveConfig{}, fmt.Errorf("unsupported git provider %q; use github or gitlab", *gitProvider)
+		return resumeConfig{}, fmt.Errorf("unsupported git provider %q; use github or gitlab", *gitProvider)
 	}
 
 	if fs.NArg() != 1 {
-		return solveConfig{}, fmt.Errorf("usage: prolix solve [flags] ISSUE_NUM")
+		return resumeConfig{}, fmt.Errorf("usage: prolix resume [flags] ISSUE_NUM")
 	}
-	return solveConfig{
+
+	return resumeConfig{
 		IssueNum:     fs.Arg(0),
+		Branch:       *branch,
+		PRNum:        *prNum,
 		MainBranch:   *mainBranch,
 		GitProvider:  *gitProvider,
 		SkipPipeline: *skipPipeline,
 	}, nil
 }
 
-func RunSolve(args []string) error {
+func RunResume(args []string) error {
 	appConfig := loadEnvAndConfig()
 
-	parsedConfig, err := parseFlags(args, appConfig)
+	parsedConfig, err := parseResumeFlags(args, appConfig)
 	if err != nil {
 		return err
 	}
@@ -61,23 +72,22 @@ func RunSolve(args []string) error {
 	if err != nil {
 		return err
 	}
-	branch := fmt.Sprintf("agent-issue-%s", parsedConfig.IssueNum)
-	wt := newWorktree(ex, basePath, branch, parsedConfig.MainBranch)
+	wt := newWorktree(ex, basePath, parsedConfig.Branch, parsedConfig.MainBranch)
 
-	fmt.Println("Creating worktree")
-	if err := wt.Create(); err != nil {
-		return fmt.Errorf("create worktree: %w", err)
+	fmt.Println("Attaching to worktree")
+	if err := wt.Attach(); err != nil {
+		return fmt.Errorf("attach worktree: %w", err)
 	}
 	if err := os.Chdir(wt.Path()); err != nil {
-		_ = wt.Remove()
+		_ = wt.Detach()
 		return fmt.Errorf("chdir to worktree: %w", err)
 	}
 	defer func() {
 		if err := os.Chdir(wd); err != nil {
 			fmt.Fprintf(os.Stderr, "cleanup warning: chdir: %v\n", err)
 		}
-		if rmErr := wt.Remove(); rmErr != nil {
-			fmt.Fprintf(os.Stderr, "cleanup warning: %v\n", rmErr)
+		if err := wt.Detach(); err != nil {
+			fmt.Fprintf(os.Stderr, "cleanup warning: %v\n", err)
 		}
 	}()
 
@@ -91,5 +101,5 @@ func RunSolve(args []string) error {
 		return err
 	}
 
-	return s.Run()
+	return s.Resume(parsedConfig.PRNum)
 }

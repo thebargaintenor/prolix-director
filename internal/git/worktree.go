@@ -42,6 +42,24 @@ func (w *Worktree) Create() error {
 	return nil
 }
 
+func (w *Worktree) Detach() error {
+	w.executor.Execute("git", "push", "origin", w.branch) //nolint: errcheck — best-effort
+	if _, err := w.executor.Execute("git", "worktree", "remove", w.Path()); err != nil {
+		return fmt.Errorf("worktree remove: %w", err)
+	}
+	return nil
+}
+
+func (w *Worktree) Attach() error {
+	if _, err := w.executor.Execute("git", "rev-parse", "--verify", w.branch); err != nil {
+		return fmt.Errorf("branch %q does not exist: %w", w.branch, err)
+	}
+	if _, err := w.executor.Execute("git", "worktree", "add", w.Path(), w.branch); err != nil {
+		return fmt.Errorf("worktree add: %w", err)
+	}
+	return nil
+}
+
 func (w *Worktree) Remove() error {
 	w.executor.Execute("git", "push", "origin", w.branch) //nolint: errcheck — best-effort
 	if _, err := w.executor.Execute("git", "worktree", "remove", w.Path()); err != nil {
