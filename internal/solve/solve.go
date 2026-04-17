@@ -94,27 +94,12 @@ func (s *Solver) Run() error {
 }
 
 func (s *Solver) Resume(prNum int) error {
+	if prNum == 0 {
+		return s.Run()
+	}
 	mrOrPR := s.mrOrPRLabel()
-
-	if prNum > 0 {
-		fmt.Println("===== Phase 6: Human Review Loop =====")
-		return s.humanReviewLoop(prNum, mrOrPR)
-	}
-
-	schema := s.buildSchema(mrOrPR)
-
-	fmt.Println("===== Phase 1: Implementation =====")
-	result, err := s.main.RunWithRetry(s.phase1Prompt(mrOrPR), schema, s.prompter)
-	if err != nil {
-		return err
-	}
-
-	result, err = s.clarifyingLoop(result, schema, mrOrPR)
-	if err != nil {
-		return err
-	}
-
-	return s.runPhases2to6(result.numberForProvider(s.config.GitProvider), mrOrPR)
+	fmt.Println("===== Phase 6: Human Review Loop =====")
+	return s.humanReviewLoop(prNum, mrOrPR)
 }
 
 func (s *Solver) runPhases2to6(prNum int, mrOrPR string) error {

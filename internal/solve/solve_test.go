@@ -209,7 +209,7 @@ func TestSolver_Resume_WithPRNum_SkipsToPhase6(t *testing.T) {
 	}
 }
 
-func TestSolver_Resume_WithoutPRNum_RunsFromPhase1(t *testing.T) {
+func TestSolver_Resume_WithoutPRNum_BehavesIdenticallyToRun(t *testing.T) {
 	prompter := func(q string) (string, error) { return "1", nil }
 	mainClaude := &fakeMainClient{
 		runResponses:    []*RunResult{{PRNum: 42}},
@@ -223,8 +223,14 @@ func TestSolver_Resume_WithoutPRNum_RunsFromPhase1(t *testing.T) {
 	if err := s.Resume(0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+
+	// Resume(0) delegates to Run(), which uses RunWithRetry for Phase 1
 	if len(mainClaude.runPrompts) == 0 {
-		t.Error("expected Phase 1 RunWithRetry call when no PR provided")
+		t.Error("expected Phase 1 RunWithRetry call when no PR provided (via Run delegation)")
+	}
+	// No duplicate code path — only one runPrompt should exist
+	if len(mainClaude.runPrompts) > 1 {
+		t.Errorf("expected exactly 1 run call, got %d — possible code duplication", len(mainClaude.runPrompts))
 	}
 }
 
